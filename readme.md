@@ -213,6 +213,6 @@ terraform destroy -var-file="dev.tfvars"
 
 For a complete breakdown of the architecture, security controls, and deployment strategy, see the detailed documentation:
 
-  * **[Architecture Deep Dive]()**
+  * **[Architecture Deep Dive](/docs/architecture_deepdive.md)**
   * **[CI/CD Pipeline Breakdown (Coming Soon)]()**
   * **[Security & Best Practices (Coming Soon)]()**

@@ -30,7 +30,118 @@ This project uses a **"Hub and Spoke"** architecture to collect and process data
 
 This multi-region design provides a more accurate, less-biased view of global internet scanner traffic.
 
-### **[YOUR ARCHITECTURE DIAGRAM HERE]**
+```mermaid
+graph TD
+    %% 1. Style Definitions
+    classDef vpc fill:#FFF3E0,stroke:#FF9800,stroke-width:2px
+    classDef subnet fill:#E3F2FD,stroke:#2196F3,stroke-width:1px
+    classDef security fill:#FFEBEE,stroke:#F44336,stroke-width:1px
+    classDef pipeline fill:#E8F5E9,stroke:#4CAF50,stroke-width:1px
+    classDef developer fill:#ede7f6,stroke:#673ab7,stroke-width:1px
+    classDef user fill:#e0f7fa,stroke:#0097a7,stroke-width:1px
+    classDef aws fill:#232F3E,stroke:#FF9900,color:#fff,stroke-width:2px
+    classDef monitor fill:#FDFEFE,stroke:#5D6D7E,stroke-width:1px
+    classDef permanent fill:#E0F2F1,stroke:#00796B,stroke-width:2px,stroke-dasharray: 5 5
+    classDef spoke fill:#FFF9C4,stroke:#FBC02D,stroke-width:1px
+
+    %% 2. Actors & CI/CD
+    subgraph "Developer & CI/CD Workflow"
+        Dev["👨‍💻<br><b>Developer</b>"]:::developer
+        AppRepo["💻<br><b>Application Repo</b><br>(github.com)"]:::pipeline
+        InfraRepo["📄<br><b>Infrastructure Repo</b><br>(github.com)"]:::pipeline
+        GitLab["<br><b>GitLab CI/CD</b>"]:::pipeline
+
+        Dev -- "git push" --> AppRepo
+        Dev -- "terraform apply" --> InfraRepo
+        AppRepo -- "Triggers Pipeline" --> GitLab
+    end
+
+    subgraph "GitLab CI/CD Pipeline"
+        direction LR
+        GitLab --> OIDC["fa:fa-id-card<br><b>IAM OIDC Auth</b><br>AssumeRole"]:::aws
+        
+        subgraph "Application Pipeline"
+            OIDC --> A2[Build Docker Image]:::pipeline
+            A2 --> A3{"Scan Image<br><b>Trivy</b>"}:::security
+            A3 --> A4[Push to ECR]:::pipeline
+            A4 --> A6["Deploy to ECS<br>(Update Service)"]:::pipeline
+        end
+    end
+    
+    subgraph "AWS Cloud"
+        direction TB
+
+        %% Permanent DNS Stack
+        subgraph DNS ["Permanent DNS Stack (infrastructure-dns)"]
+            style DNS permanent
+            R53["fa:fa-globe<br><b>Route 53</b><br>404fish.dev"]
+            ACM["fa:fa-lock<br><b>ACM Certificate</b><br>(*.404fish.dev)<br>ap-southeast-1"]
+        end
+    
+        %% User & Scanner Ingress
+        User["👤<br><b>End User</b>"]:::user -- "[https://dev.404fish.dev](https://dev.404fish.dev)" --> R53
+        Scanner["🤖<br><b>Scanner/Bot</b>"]
+
+        %% Hub VPC
+        subgraph VPC ["Hub VPC (infrastructure/dev) - ap-southeast-1"]
+            style VPC vpc
+            
+            ALB["<br><b>Application Load Balancer</b><br>(HTTPS: 443)"]:::aws
+            
+            subgraph PubSub ["Public Subnets"]
+                style PubSub subnet
+                HubSensor["fa:fa-eye<br><b>Decoy Sensor 1</b><br>(EC2 Instance)"]
+                NAT[NAT Gateway]
+            end
+
+            subgraph PrivSub ["Private Subnets"]
+                style PrivSub subnet
+                ECS["fa:fa-box<br><b>ECS on Fargate</b><br>FastAPI Application"]
+                RDS["fa:fa-database<br><b>RDS PostgreSQL</b>"]
+            end
+            
+            HubLogs["fa:fa-cloud-watch<br><b>CloudWatch Logs</b><br>(ap-se-1)"]:::monitor
+        end
+        
+        %% Spoke VPC
+        subgraph SpokeVPC ["Spoke VPC (infrastructure-sensor-region) - us-east-1"]
+            style SpokeVPC spoke
+            SpokeSensor["fa:fa-eye<br><b>Decoy Sensor 2</b><br>(EC2 Instance)"]
+            SpokeLogs["fa:fa-cloud-watch<br><b>CloudWatch Logs</b><br>(us-east-1)"]:::monitor
+        end
+
+        %% Shared Services
+        subgraph "Shared Services"
+           ECR["📦<br>Elastic Container<br>Registry"]:::aws
+           SecretsManager["🔑<br>Secrets Manager"]:::security
+        end
+
+        %% --- Data & Traffic Flows ---
+        R53 -- "A Record ('dev')" --> ALB
+        ALB -- "Uses Cert" --> ACM
+        ALB -- "Forwards to" --> ECS
+        ECS -- "R/W Data" --> RDS
+        ECS -- "Get Secrets" --> SecretsManager
+        ECS -- "Outbound" --> NAT
+        
+        %% Data Collection
+        Scanner --> HubSensor
+        Scanner --> SpokeSensor
+        HubSensor -- "VPC Flow Logs" --> HubLogs
+        SpokeSensor -- "VPC Flow Logs" --> SpokeLogs
+        ECS -- "Polls (Multi-Region)" --> HubLogs
+        ECS -- "Polls (Multi-Region)" --> SpokeLogs
+        
+        %% CI/CD Connections
+        InfraRepo -- "Provisions" --> VPC
+        InfraRepo -- "Provisions" --> SpokeVPC
+        InfraRepo -- "Provisions" --> DNS
+        A6 -- "Updates" --> ECS
+        A4 -- "Pushes to" --> ECR
+        ECS -- "Pulls Image" --> ECR
+    end
+
+```
 
 > **Note:** A visual diagram is highly recommended. You can create one with tools like diagrams.net (draw.io) and embed the image here.
 

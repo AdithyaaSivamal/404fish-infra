@@ -1,0 +1,154 @@
+graph TD
+    %% Define Styles
+    classDef vpc fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef subnet fill:#ccf,stroke:#333;
+    classDef public fill:#cff;
+    classDef private fill:#ffc;
+    classDef security fill:#fcc;
+    classDef data fill:#cfc;
+    classDef logging fill:#dcc;
+    classDef cost fill:#ddf;
+    classDef iam fill:#eee,stroke:#999;
+    classDef external fill:#fff,stroke:#000,stroke-width:2px;
+
+    %% External User & Developer/Terraform
+    User(fa:fa-user User) -->|HTTPS/80| IGW;
+    TerraformUser[fa:fa-user-cog Terraform User/CI-CD];
+
+    subgraph AWS Cloud Account [AWS Cloud Account]
+        TerraformUser -- AWS API --> AWSResources[AWS Managed Services];
+        AWSResources -- Apply Changes --> VPC;
+        AWSResources -- Apply Changes --> SG;
+        AWSResources -- Apply Changes --> IAM;
+        AWSResources -- Apply Changes --> Data;
+        AWSResources -- Apply Changes --> Logging;
+        AWSResources -- Apply Changes --> Cost;
+
+        subgraph IAM [Identity & Access Management]
+            style IAM fill:#eee,stroke:#999,stroke-width:2px
+            TU(Terraform User IAM) --> TPPol(TerraformProjectPolicy);
+            class TU,TPPol iam;
+
+            ExecRole(ECS Task Execution Role) --> ExecPol(ECSTaskExecutionRolePolicy - AWS Managed);
+            TaskRole(ECS Task Role) --> RSPol(ReadSecretPolicy - Custom);
+            class ExecRole,TaskRole,ExecPol,RSPol iam;
+        end
+
+        subgraph VPC [VPC: 10.0.0.0/16]
+            style VPC fill:#e1effa,stroke:#335,stroke-width:2px
+
+            subgraph AZ1 [Availability Zone A: ap-southeast-1a]
+                style AZ1 fill:#fff,stroke-dasharray: 5 5
+                subgraph PublicSubnetA [Public Subnet A: 10.0.1.0/24]
+                    style PublicSubnetA fill:#cff
+                    ALB_A(ALB Node A)
+                    NATGW(NAT Gateway A);
+                    EIP(fa:fa-globe Elastic IP);
+                    EIP --> NATGW;
+                end
+                subgraph PrivateSubnetA [Private Subnet A: 10.0.3.0/24]
+                    style PrivateSubnetA fill:#ffc
+                    ECS_TaskA(fa:fa-box ECS Task A - Fargate);
+                    RDS_A(fa:fa-database RDS Primary - PostgreSQL 15.7);
+                end
+            end
+
+            subgraph AZ2 [Availability Zone B: ap-southeast-1b]
+                style AZ2 fill:#fff,stroke-dasharray: 5 5
+                subgraph PublicSubnetB [Public Subnet B: 10.0.2.0/24]
+                    style PublicSubnetB fill:#cff
+                    ALB_B(ALB Node B)
+                end
+                subgraph PrivateSubnetB [Private Subnet B: 10.0.4.0/24]
+                    style PrivateSubnetB fill:#ffc
+                    ECS_TaskB(fa:fa-box ECS Task B - Fargate);
+                end
+            end
+
+            %% Networking Resources within VPC
+            IGW(fa:fa-door-open Internet Gateway);
+            PublicRT(Public Route Table);
+            PrivateRT(Private Route Table);
+
+            PublicRT -- Route 0.0.0.0/0 --> IGW;
+            PrivateRT -- Route 0.0.0.0/0 --> NATGW;
+            PublicSubnetA & PublicSubnetB -- Associate --> PublicRT;
+            PrivateSubnetA & PrivateSubnetB -- Associate --> PrivateRT;
+
+            ALB_A & ALB_B <-->|Load Balancing| ALB(ALB: containerized-apps-infra-alb);
+            ALB -- Listens on Port 80 --> ALBTG;
+        end
+
+        subgraph SG [Security Groups]
+            style SG fill:#fcc,stroke:#533,stroke-width:2px
+            ALB_SG(ALB Security Group);
+            ECS_SG(ECS Security Group);
+            RDS_SG(RDS Security Group);
+
+            ALB_SG -- Allows Port 80 Ingress --> ALB;
+            ALB -- Forwards Port 80 Traffic --> ECS_SG;
+            ECS_SG -- Allows Port 80 Ingress from ALB_SG --> ECS_TaskA & ECS_TaskB;
+            ECS_TaskA & ECS_TaskB -- Talk via Port 5432 --> RDS_SG;
+            RDS_SG -- Allows Port 5432 Ingress from ECS_SG --> RDS_A;
+        end
+
+        subgraph Compute [ECS Compute]
+            style Compute fill:#dff,stroke:#355,stroke-width:2px
+            ECS_Cluster(ECS Cluster: containerized-apps-infra-cluster);
+            ECS_Service(ECS Service: containerized-apps-infra-service);
+            ECS_TaskDef(ECS Task Definition: containerized-apps-infra-task);
+            ALBTG(Target Group: containerized-apps-infra-tg);
+
+            ECS_Service -- Runs --> ECS_TaskA & ECS_TaskB;
+            ECS_Service -- Uses --> ECS_TaskDef;
+            ECS_TaskDef -- Defines Container Image & Env Vars --> ECS_TaskA & ECS_TaskB;
+            ECS_TaskA & ECS_TaskB -- Register with --> ALBTG;
+            ALBTG -- Health Checks Port 80 --> ECS_TaskA & ECS_TaskB;
+            ECS_TaskA & ECS_TaskB -- Assume Role --> TaskRole;
+            ECS_TaskA & ECS_TaskB -- Assume Role --> ExecRole;
+        end
+
+        subgraph Data [Data Layer]
+            style Data fill:#cfc,stroke:#353,stroke-width:2px
+            RDS_A --> DBSubnetGroup(DB Subnet Group - Private);
+            DBSubnetGroup --> PrivateSubnetA & PrivateSubnetB;
+            SecretsManager(fa:fa-key Secrets Manager);
+            QuarantineBucket(fa:fa-archive S3 Quarantine Bucket - Encrypted);
+            QuarantineKMS(fa:fa-key KMS Key for Quarantine);
+
+            TaskRole -- Has RSPol, allows GetSecretValue --> SecretsManager;
+            ECS_TaskA & ECS_TaskB -- Get DB Password --> SecretsManager;
+            QuarantineBucket -- Encrypted by --> QuarantineKMS;
+            %% PII Scanner App would write here
+            %% PII_Scanner_App(PII Scanner App) --> QuarantineBucket;
+        end
+
+        subgraph Logging [Logging & Auditing]
+            style Logging fill:#dcc,stroke:#533,stroke-width:2px
+            CloudTrail(fa:fa-shoe-prints CloudTrail);
+            LogBucket(fa:fa-archive S3 Log Bucket - Secured);
+            CloudTrail -- Writes API Logs --> LogBucket;
+            %% Wazuh(Wazuh SIEM) -->|Pulls Logs via S3 Wodle| LogBucket;
+        end
+
+        subgraph Cost [Cost Management]
+            style Cost fill:#ddf,stroke:#335,stroke-width:2px
+            Budget(fa:fa-dollar-sign AWS Budgets);
+            Anomaly(fa:fa-chart-line Cost Anomaly Detection);
+            Email(fa:fa-envelope Email Alert);
+
+            Budget -- Sends Forecast Alert --> Email;
+            Anomaly -- Sends Anomaly Alert --> Email;
+        end
+
+        %% External Connections from Private Subnets
+        ECS_TaskA & ECS_TaskB -- Outbound Internet via NAT --> Internet[fa:fa-cloud Internet];
+    end
+
+    %% Apply Classes
+    class User,TerraformUser external;
+    class ALB_SG,ECS_SG,RDS_SG security;
+    class SecretsManager,QuarantineBucket,QuarantineKMS,RDS_A,DBSubnetGroup data;
+    class CloudTrail,LogBucket logging;
+    class Budget,Anomaly,Email cost;
+

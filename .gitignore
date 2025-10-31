@@ -1,0 +1,36 @@
+# Local Terraform execution files
+
+.terraform/
+*.tfstate
+*.tfstate.*.backup
+.terraform.lock.hcl
+
+# Crash log files
+
+crash.log
+crash.*.log
+*.log
+
+# Private variable files
+# Only 'example.tfvars' should be committed
+
+*.tfvars
+!example.tfvars
+
+# Override files
+
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# --- NEW RULE ---
+
+# Ignore all .bk (backup) files
+
+*.bk
+
+# Ignore OS-specific files
+
+.DS_Store
+Thumbs.db

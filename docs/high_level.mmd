@@ -1,0 +1,89 @@
+graph TD
+    %% 1. Style Definitions
+    classDef vpc fill:#FFF3E0,stroke:#FF9800,stroke-width:2px
+    classDef subnet fill:#E3F2FD,stroke:#2196F3,stroke-width:1px
+    classDef security fill:#FFEBEE,stroke:#F44336,stroke-width:1px
+    classDef pipeline fill:#E8F5E9,stroke:#4CAF50,stroke-width:1px
+    classDef developer fill:#ede7f6,stroke:#673ab7,stroke-width:1px
+    classDef user fill:#e0f7fa,stroke:#0097a7,stroke-width:1px
+    classDef aws fill:#232F3E,stroke:#FF9900,color:#fff,stroke-width:2px
+    classDef monitor fill:#FDFEFE,stroke:#5D6D7E,stroke-width:1px
+    classDef endpoint fill:#f3e5f5,stroke:#8e24aa,stroke-width:1px
+
+    %% 2. Actors & Source Code
+    subgraph Developer Workflow
+        Dev["👨‍💻<br><b>Developer</b>"]:::developer
+        InfraRepo["📄<br><b>Terraform Repo</b><br>github.com"]:::pipeline
+        AppRepo["💻<br><b>Application Repo</b><br>github.com"]:::pipeline
+        
+        Dev -- "git push" --> InfraRepo
+        Dev -- "git push" --> AppRepo
+    end
+
+    %% 3. CI/CD Pipelines
+    subgraph GitHub Actions CI/CD
+        direction LR
+        subgraph "Infrastructure Pipeline"
+            InfraRepo --> T1[Trigger]:::pipeline
+            T1 --> T2{"Scan IaC<br><b>tfsec</b>"}:::security
+            T2 --> T3[Terraform Plan]:::pipeline
+            T3 --> T4{"Manual<br>Approval"}:::pipeline
+            T4 --> T5[Terraform Apply]:::pipeline
+        end
+
+        subgraph "Application Pipeline"
+            AppRepo --> A1[Trigger]:::pipeline
+            A1 --> A2[Build Docker Image]:::pipeline
+            A2 --> A3{"Scan Image<br><b>Trivy</b>"}:::security
+            A3 --> A4[Push to ECR]:::pipeline
+            A4 --> A5{"DB Migration<br><b>Alembic</b>"}:::pipeline
+            A5 --> A6[Deploy to ECS]:::pipeline
+        end
+    end
+    
+    subgraph "AWS Cloud"
+        direction TB
+
+        %% Ingress & Networking
+        User["👤<br><b>End User</b>"]:::user --> IGW[Internet Gateway]
+        T5 -- "Provisions" --> VPC
+        A6 -- "Deploys to" --> ECSService
+        
+        subgraph "VPC"
+            subgraph "Public Subnets"
+                IGW --> ALB[Application<br>Load Balancer]
+                NAT[NAT Gateway]
+            end
+
+            subgraph "Private Subnets"
+                ECSService[ECS Service] --> ECSTasks[Fargate Tasks]
+                RDS[RDS Database]
+                VPCEndpoint["📡<br>VPC Endpoint"]:::endpoint
+            end
+        end
+        
+        %% Core Traffic Flow
+        ALB --> ECSTasks
+        ECSTasks --> RDS
+        ECSTasks -- "<b>External</b> API Calls" --> NAT --> IGW
+        
+        subgraph "Shared Services"
+           ECR["📦<br>Elastic Container<br>Registry"]:::aws
+           SecretsManager["🔑<br>Secrets Manager"]:::security
+           CloudWatch["📊<br>CloudWatch<br>(Logs & Metrics)"]:::monitor
+           SNS["✉️<br>SNS Topic"]:::monitor
+        end
+
+        %% Private Endpoint Connections
+        ECSTasks -- "<b>Internal</b> AWS Calls" --> VPCEndpoint
+        VPCEndpoint -- "aws.ecr" --> ECR
+        VPCEndpoint -- "aws.secretsmanager" --> SecretsManager
+        
+        %% Monitoring Connections
+        ALB --> CloudWatch
+        ECSTasks --> CloudWatch
+        RDS --> CloudWatch
+    end
+    
+    %% 5. Monitoring Feedback Loop
+    CloudWatch -- "Triggers Alarm" --> SNS -- "Sends Notification" --> Dev

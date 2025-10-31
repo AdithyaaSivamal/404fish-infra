@@ -143,7 +143,6 @@ graph TD
 
 ```
 
-> **Note:** A visual diagram is highly recommended. You can create one with tools like diagrams.net (draw.io) and embed the image here.
 
 -----
 

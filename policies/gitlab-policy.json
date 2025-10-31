@@ -1,0 +1,29 @@
+{
+	"Version": "2012-10-17",
+	"Statement": [
+		{
+			"Sid": "AllowECRAuth",
+			"Effect": "Allow",
+			"Action": "ecr:GetAuthorizationToken",
+			"Resource": "*"
+		},
+		{
+			"Sid": "AllowECRPush",
+			"Effect": "Allow",
+			"Action": [
+				"ecr:BatchCheckLayerAvailability",
+				"ecr:CompleteLayerUpload",
+				"ecr:InitiateLayerUpload",
+				"ecr:PutImage",
+				"ecr:UploadLayerPart"
+			],
+			"Resource": "arn:aws:ecr:ap-southeast-1:068882397753:repository/containerized-apps-infra-app-repo"
+		},
+		{
+			"Sid": "AllowECSUpdateService",
+			"Effect": "Allow",
+			"Action": "ecs:UpdateService",
+			"Resource": "arn:aws:ecs:ap-southeast-1:068882397753:service/containerized-apps-infra-cluster/containerized-apps-infra-service"
+		}
+	]
+}

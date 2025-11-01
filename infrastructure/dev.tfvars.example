@@ -1,0 +1,12 @@
+# infrastructure/prod.tfvars
+
+aws_region          = "ap-southeast-1"
+project_name        = "containerized-apps-infra"
+db_password         = "changeme"
+budget_amount_usd   = 15
+alert_email         = "changeme@email.com"
+gitlab_project_path = "aws-homelab1/internet-noise-visualizer"
+
+domain_name         = "your registered domain name"
+route53_zone_id     = "copy infrastructure-dns route53_zone_id value here"
+acm_certificate_arn = "copy infrastructure-dns acm_certificate_arn value here"

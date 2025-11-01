@@ -1,8 +1,5 @@
 
-
-
-
- [![pipeline status](https://gitlab.com/aws-homelab1/internet-noise-visualizer/badges/main/pipeline.svg)](https://gitlab.com/aws-homelab1/internet-noise-visualizer/-/commits/main)
+[![pipeline status](https://aws-homelab1.gitlab.io/internet-noise-visualizer/pipeline.svg)](https://gitlab.com/aws-homelab1/internet-noise-visualizer/-/commits/main) 
 
 
 # 🌐 Internet Background Noise Visualizer (Infrastructure)

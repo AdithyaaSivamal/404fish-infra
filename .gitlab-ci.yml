@@ -1,0 +1,30 @@
+
+stages:
+  - validate
+
+image:
+  name: hashicorp/terraform:light
+  entrypoint: [""]
+
+.validate_template: &validate_job
+  stage: validate
+  script:
+    - cd $TF_ROOT
+    - terraform fmt -check
+    - terraform init -backend=false
+    - terraform validate
+
+validate:hub:
+  <<: *validate_job
+  variables:
+    TF_ROOT: infrastructure/
+
+validate:dns:
+  <<: *validate_job
+  variables:
+    TF_ROOT: infrastructure-dns/
+
+validate:sensor:
+  <<: *validate_job
+  variables:
+    TF_ROOT: infrastructure-sensor-region/
